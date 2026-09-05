@@ -1,15 +1,14 @@
-// --- config ---
-const ADMIN_PASSCODE = "karsekhar-admin"; // change this before sharing the repo publicly
-const GEMINI_MODEL = "gemini-2.0-flash";
-const GEMINI_URL = (key) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
-const LOCAL_KEY_NAME = "proofgive_gemini_key";
+const { Connection, PublicKey, Transaction, SystemProgram, clusterApiUrl } = solanaWeb3;
 
-// --- state ---
-let geminiApiKey = localStorage.getItem(LOCAL_KEY_NAME) || null;
-const donations = [];      // { donor, campaign, amount }
-const distributions = [];  // { batchLabel, beneficiaryCount, totalDistributed } — private notes never stored here
-let lastReportText = null;
+const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
+let wallet = null;
+
+const connectBtn = document.getElementById("connectBtn");
+const donateBtn = document.getElementById("donateBtn");
+const distributeBtn = document.getElementById("distributeBtn");
+const refreshBtn = document.getElementById("refreshBtn");
 
 function setStatus(elId, msg, isError = false) {
   const el = document.getElementById(elId);
@@ -17,217 +16,235 @@ function setStatus(elId, msg, isError = false) {
   el.classList.toggle("error", isError);
 }
 
-// --- view switching ---
-const publicViewBtn = document.getElementById("publicViewBtn");
-const adminViewBtn = document.getElementById("adminViewBtn");
-const publicView = document.getElementById("publicView");
-const adminView = document.getElementById("adminView");
-
-function showPublic() {
-  publicView.classList.remove("hidden");
-  adminView.classList.add("hidden");
-  publicViewBtn.classList.add("active");
-  adminViewBtn.classList.remove("active");
+function memoInstruction(text, signerPubkey) {
+  return new solanaWeb3.TransactionInstruction({
+    keys: [{ pubkey: signerPubkey, isSigner: true, isWritable: false }],
+    programId: MEMO_PROGRAM_ID,
+    data: new TextEncoder().encode(text),
+  });
 }
 
-function showAdmin() {
-  const entered = prompt("Admin passcode:");
-  if (entered !== ADMIN_PASSCODE) {
-    if (entered !== null) alert("Wrong passcode.");
+async function sha256Hex(message) {
+  const data = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function connectWallet() {
+  if (!window.solana || !window.solana.isPhantom) {
+    alert("Phantom wallet not found. Install it from phantom.app, switch it to Devnet, and reload.");
     return;
   }
-  publicView.classList.add("hidden");
-  adminView.classList.remove("hidden");
-  adminViewBtn.classList.add("active");
-  publicViewBtn.classList.remove("active");
-}
-
-publicViewBtn.addEventListener("click", showPublic);
-adminViewBtn.addEventListener("click", showAdmin);
-
-// --- API key (localStorage only — never hardcoded, never committed to the repo) ---
-const keyStatusMsg = document.getElementById("keyStatusMsg");
-
-function refreshKeyStatus() {
-  keyStatusMsg.textContent = geminiApiKey ? "Gemini key is set for this device." : "No key saved yet.";
-}
-refreshKeyStatus();
-
-document.getElementById("saveKeyBtn").addEventListener("click", () => {
-  const val = document.getElementById("apiKey").value.trim();
-  if (!val) return setStatus("keyStatusMsg", "Paste a key first.", true);
-
-  geminiApiKey = val;
-  if (document.getElementById("rememberKey").checked) {
-    localStorage.setItem(LOCAL_KEY_NAME, val);
-  } else {
-    localStorage.removeItem(LOCAL_KEY_NAME);
+  try {
+    const resp = await window.solana.connect();
+    wallet = resp.publicKey;
+    connectBtn.textContent = wallet.toBase58().slice(0, 4) + "…" + wallet.toBase58().slice(-4);
+    connectBtn.classList.add("btn-outline");
+  } catch (err) {
+    console.error(err);
   }
-  document.getElementById("apiKey").value = "";
-  setStatus("keyStatusMsg", "Key saved for this device.");
-});
-
-document.getElementById("clearKeyBtn").addEventListener("click", () => {
-  geminiApiKey = null;
-  localStorage.removeItem(LOCAL_KEY_NAME);
-  setStatus("keyStatusMsg", "Key cleared.");
-});
-
-// --- donations ---
-document.getElementById("donateBtn").addEventListener("click", () => {
-  const donor = document.getElementById("donorName").value.trim() || "Anonymous";
-  const campaign = document.getElementById("campaign").value.trim();
-  const amount = parseFloat(document.getElementById("amount").value);
-
-  if (!campaign) return setStatus("donateStatus", "Enter a campaign name.", true);
-  if (!amount || amount <= 0) return setStatus("donateStatus", "Enter an amount greater than 0.", true);
-
-  donations.push({ donor, campaign, amount });
-  setStatus("donateStatus", `Logged PKR ${amount} from ${donor}.`);
-  document.getElementById("campaign").value = "";
-  document.getElementById("amount").value = "";
-  document.getElementById("donorName").value = "";
-  renderLedger();
-});
-
-// --- distributions ---
-document.getElementById("distributeBtn").addEventListener("click", () => {
-  const batchLabel = document.getElementById("batchLabel").value.trim();
-  const beneficiaryCount = parseInt(document.getElementById("beneficiaryCount").value, 10);
-  const totalDistributed = parseFloat(document.getElementById("totalDistributed").value);
-  const privateNotes = document.getElementById("privateNotes").value.trim(); // read only to confirm non-empty; never stored
-
-  if (!batchLabel) return setStatus("distributeStatus", "Enter a batch label.", true);
-  if (!beneficiaryCount || beneficiaryCount <= 0)
-    return setStatus("distributeStatus", "Enter a beneficiary count.", true);
-  if (!totalDistributed || totalDistributed < 0)
-    return setStatus("distributeStatus", "Enter a total distributed amount.", true);
-
-  distributions.push({ batchLabel, beneficiaryCount, totalDistributed });
-  setStatus(
-    "distributeStatus",
-    privateNotes ? "Batch recorded. Private notes stayed on this device only." : "Batch recorded."
-  );
-
-  document.getElementById("batchLabel").value = "";
-  document.getElementById("beneficiaryCount").value = "";
-  document.getElementById("totalDistributed").value = "";
-  document.getElementById("privateNotes").value = "";
-  renderLedger();
-});
-
-// --- ledger rendering + the exact redacted payload sent to Gemini ---
-function buildPublicSummary() {
-  const totalReceived = donations.reduce((s, d) => s + d.amount, 0);
-  const totalDistributedOut = distributions.reduce((s, d) => s + d.totalDistributed, 0);
-  const beneficiaryTotal = distributions.reduce((s, d) => s + d.beneficiaryCount, 0);
-
-  return {
-    totalReceived,
-    totalDistributedOut,
-    beneficiaryTotal,
-    donations: donations.map((d) => ({ donor: d.donor, campaign: d.campaign, amount: d.amount })),
-    distributionBatches: distributions.map((d) => ({
-      batchLabel: d.batchLabel,
-      beneficiaryCount: d.beneficiaryCount,
-      totalDistributed: d.totalDistributed,
-    })),
-  };
 }
 
-function renderLedger() {
-  const summary = buildPublicSummary();
-  document.getElementById("totalReceived").textContent = `PKR ${summary.totalReceived.toLocaleString()}`;
-  document.getElementById("totalDistributedOut").textContent = `PKR ${summary.totalDistributedOut.toLocaleString()}`;
-  document.getElementById("beneficiaryTotal").textContent = summary.beneficiaryTotal;
+async function sendDonation() {
+  const ngoAddressStr = document.getElementById("ngoAddress").value.trim();
+  const campaign = document.getElementById("campaign").value.trim() || "General";
+  const amountSol = parseFloat(document.getElementById("amount").value);
 
-  const rows = [
-    ...summary.donations.map((d) => ({
-      type: "Donation",
-      detail: `${d.donor} → ${d.campaign}`,
-      amount: `PKR ${d.amount.toLocaleString()}`,
-    })),
-    ...summary.distributionBatches.map((d) => ({
-      type: "Distribution",
-      detail: `${d.batchLabel} · ${d.beneficiaryCount} beneficiaries`,
-      amount: `PKR ${d.totalDistributed.toLocaleString()}`,
-    })),
-  ];
+  if (!wallet) return setStatus("donateStatus", "Connect your wallet first.", true);
+  if (!ngoAddressStr) return setStatus("donateStatus", "Paste the NGO's wallet address.", true);
+  if (!amountSol || amountSol <= 0) return setStatus("donateStatus", "Enter an amount greater than 0.", true);
 
+  let ngoPubkey;
+  try {
+    ngoPubkey = new PublicKey(ngoAddressStr);
+  } catch {
+    return setStatus("donateStatus", "That doesn't look like a valid Solana address.", true);
+  }
+
+  donateBtn.disabled = true;
+  setStatus("donateStatus", "Building transaction…");
+
+  try {
+    const lamports = Math.round(amountSol * solanaWeb3.LAMPORTS_PER_SOL);
+    const memoPayload = JSON.stringify({
+      type: "donation",
+      campaign,
+      note: "ProofGive submission",
+    });
+
+    const tx = new Transaction().add(
+      SystemProgram.transfer({ fromPubkey: wallet, toPubkey: ngoPubkey, lamports }),
+      memoInstruction(memoPayload, wallet)
+    );
+    tx.feePayer = wallet;
+    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+    setStatus("donateStatus", "Waiting for wallet approval…");
+    const { signature } = await window.solana.signAndSendTransaction(tx);
+    setStatus("donateStatus", "Confirming on-chain…");
+    await connection.confirmTransaction(signature, "confirmed");
+    setStatus("donateStatus", "Donation recorded ✓ " + signature.slice(0, 8) + "…");
+    document.getElementById("amount").value = "";
+    loadLedger(ngoAddressStr);
+  } catch (err) {
+    console.error(err);
+    setStatus("donateStatus", "Transaction failed — see console.", true);
+  } finally {
+    donateBtn.disabled = false;
+  }
+}
+
+async function postDistributionProof() {
+  const ngoAddressStr = document.getElementById("ngoAddress").value.trim();
+  const batchLabel = document.getElementById("batchLabel").value.trim() || "Distribution batch";
+  const beneficiaryCount = document.getElementById("beneficiaryCount").value.trim();
+  const totalDistributed = document.getElementById("totalDistributed").value.trim();
+  const privateNotes = document.getElementById("privateNotes").value;
+
+  if (!wallet) return setStatus("distributeStatus", "Connect your wallet first.", true);
+  if (!beneficiaryCount || !totalDistributed) {
+    return setStatus("distributeStatus", "Fill in beneficiary count and total distributed.", true);
+  }
+
+  distributeBtn.disabled = true;
+  setStatus("distributeStatus", "Hashing allocation locally…");
+
+  try {
+    const allocationHash = await sha256Hex(
+      `${batchLabel}|${beneficiaryCount}|${totalDistributed}|${privateNotes}`
+    );
+
+    const memoPayload = JSON.stringify({
+      type: "distribution_proof",
+      batchLabel,
+      beneficiaryCount: Number(beneficiaryCount),
+      totalDistributed: Number(totalDistributed),
+      allocationHash,
+    });
+
+    const tx = new Transaction().add(memoInstruction(memoPayload, wallet));
+    tx.feePayer = wallet;
+    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+    setStatus("distributeStatus", "Waiting for wallet approval…");
+    const { signature } = await window.solana.signAndSendTransaction(tx);
+    setStatus("distributeStatus", "Confirming on-chain…");
+    await connection.confirmTransaction(signature, "confirmed");
+    setStatus("distributeStatus", "Proof posted ✓ " + signature.slice(0, 8) + "…");
+
+    document.getElementById("privateNotes").value = "";
+    if (ngoAddressStr) loadLedger(ngoAddressStr);
+  } catch (err) {
+    console.error(err);
+    setStatus("distributeStatus", "Transaction failed — see console.", true);
+  } finally {
+    distributeBtn.disabled = false;
+  }
+}
+
+function explorerLink(signature) {
+  return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
+}
+
+function parseMemoFromTx(parsedTx) {
+  const ixs = parsedTx?.transaction?.message?.instructions || [];
+  for (const ix of ixs) {
+    const isMemoProgram =
+      ix.program === "spl-memo" || ix.programId?.toBase58?.() === MEMO_PROGRAM_ID.toBase58();
+    if (isMemoProgram && typeof ix.parsed === "string") {
+      try {
+        return JSON.parse(ix.parsed);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+async function loadLedger(ngoAddressOverride) {
+  const ngoAddressStr = ngoAddressOverride || document.getElementById("ngoAddress").value.trim();
   const tbody = document.getElementById("ledgerBody");
-  tbody.innerHTML = rows.length
-    ? rows.map((r) => `<tr><td>${r.type}</td><td>${r.detail}</td><td>${r.amount}</td></tr>`).join("")
-    : `<tr><td colspan="3" class="empty-row">Nothing logged yet.</td></tr>`;
-}
 
-// --- Gemini calls ---
-async function callGemini(prompt) {
-  if (!geminiApiKey) throw new Error("No Gemini key saved yet — set one in Admin.");
-  const res = await fetch(GEMINI_URL(geminiApiKey), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini request failed (${res.status}): ${errText}`);
+  if (!ngoAddressStr) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-row">Enter an NGO address above to load its ledger.</td></tr>`;
+    return;
   }
-  const data = await res.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "(no response)";
-}
 
-document.getElementById("generateReportBtn").addEventListener("click", async () => {
-  if (!geminiApiKey) return setStatus("reportStatus", "Save your Gemini key above first.", true);
-  if (!donations.length && !distributions.length)
-    return setStatus("reportStatus", "Log at least one donation or distribution first.", true);
+  let pubkey;
+  try {
+    pubkey = new PublicKey(ngoAddressStr);
+  } catch {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-row">Invalid address.</td></tr>`;
+    return;
+  }
 
-  setStatus("reportStatus", "Generating…");
-  document.getElementById("generateReportBtn").disabled = true;
+  tbody.innerHTML = `<tr><td colspan="4" class="empty-row">Loading from chain…</td></tr>`;
 
   try {
-    const summary = buildPublicSummary();
-    const prompt = `You are writing a short, warm, plain-language public transparency report for donors of an NGO called Kar Se Khar. Use ONLY the JSON data below — do not invent names, people, or details not present in it. Keep it under 150 words, no markdown headers, just a couple of short paragraphs.
+    const sigs = await connection.getSignaturesForAddress(pubkey, { limit: 25 });
+    let totalReceived = 0;
+    let totalDistributedOut = 0;
+    let proofCount = 0;
+    const rows = [];
 
-Data:
-${JSON.stringify(summary, null, 2)}`;
+    for (const sigInfo of sigs) {
+      const parsedTx = await connection.getParsedTransaction(sigInfo.signature, {
+        maxSupportedTransactionVersion: 0,
+      });
+      if (!parsedTx) continue;
+      const memo = parseMemoFromTx(parsedTx);
+      if (!memo) continue;
 
-    lastReportText = await callGemini(prompt);
-    document.getElementById("reportOutput").textContent = lastReportText;
-    setStatus("reportStatus", "Report generated ✓ — donors can now see it on the Donor view.");
+      if (memo.type === "donation") {
+        const transferIx = (parsedTx.transaction.message.instructions || []).find(
+          (ix) => ix.parsed?.type === "transfer" && ix.parsed?.info?.destination === ngoAddressStr
+        );
+        const sol = transferIx ? transferIx.parsed.info.lamports / solanaWeb3.LAMPORTS_PER_SOL : 0;
+        totalReceived += sol;
+        rows.push({
+          type: "Donation",
+          detail: memo.campaign || "General",
+          amount: sol.toFixed(4) + " SOL",
+          sig: sigInfo.signature,
+        });
+      } else if (memo.type === "distribution_proof") {
+        totalDistributedOut += Number(memo.totalDistributed) || 0;
+        proofCount += 1;
+        rows.push({
+          type: "Distribution proof",
+          detail: `${memo.batchLabel} · ${memo.beneficiaryCount} beneficiaries · hash ${memo.allocationHash?.slice(0, 10)}…`,
+          amount: Number(memo.totalDistributed).toFixed(4) + " SOL",
+          sig: sigInfo.signature,
+        });
+      }
+    }
+
+    document.getElementById("totalReceived").textContent = totalReceived.toFixed(4) + " SOL";
+    document.getElementById("totalDistributedOut").textContent = totalDistributedOut.toFixed(4) + " SOL";
+    document.getElementById("proofCount").textContent = proofCount;
+
+    tbody.innerHTML = rows.length
+      ? rows
+          .map(
+            (r) => `<tr>
+              <td>${r.type}</td>
+              <td>${r.detail}</td>
+              <td>${r.amount}</td>
+              <td><a href="${explorerLink(r.sig)}" target="_blank" rel="noopener">View ↗</a></td>
+            </tr>`
+          )
+          .join("")
+      : `<tr><td colspan="4" class="empty-row">No ProofGive activity found for this address yet.</td></tr>`;
   } catch (err) {
     console.error(err);
-    setStatus("reportStatus", err.message || "Something went wrong.", true);
-  } finally {
-    document.getElementById("generateReportBtn").disabled = false;
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-row">Couldn't load ledger — see console.</td></tr>`;
   }
-});
+}
 
-document.getElementById("qaBtn").addEventListener("click", async () => {
-  const question = document.getElementById("qaInput").value.trim();
-  if (!geminiApiKey) return setStatus("qaStatus", "The Gemini key hasn't been set up by the team yet.", true);
-  if (!question) return setStatus("qaStatus", "Type a question first.", true);
-
-  setStatus("qaStatus", "Thinking…");
-  document.getElementById("qaBtn").disabled = true;
-
-  try {
-    const summary = buildPublicSummary();
-    const prompt = `You are a transparency assistant for an NGO called Kar Se Khar. Answer the donor's question using ONLY the JSON ledger data below. If the answer isn't in the data (for example, anything about specific beneficiaries' names or individual amounts), say plainly that this information isn't published to protect beneficiary privacy. Keep the answer short and direct.
-
-Ledger data:
-${JSON.stringify(summary, null, 2)}
-
-Donor question: ${question}`;
-
-    const text = await callGemini(prompt);
-    document.getElementById("qaOutput").textContent = text;
-    setStatus("qaStatus", "");
-  } catch (err) {
-    console.error(err);
-    setStatus("qaStatus", err.message || "Something went wrong.", true);
-  } finally {
-    document.getElementById("qaBtn").disabled = false;
-  }
-});
-
-renderLedger();
+connectBtn.addEventListener("click", connectWallet);
+donateBtn.addEventListener("click", sendDonation);
+distributeBtn.addEventListener("click", postDistributionProof);
+refreshBtn.addEventListener("click", () => loadLedger());
