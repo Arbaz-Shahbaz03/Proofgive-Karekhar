@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ProofGive — Transparent Giving, Private Beneficiaries</title>
+<title>ProofGive — Kar Se Khar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
@@ -12,26 +12,34 @@
 
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">◆</span>
-    <span class="brand-name">ProofGive</span>
+    <img src="assets/logo.png" alt="Kar Se Khar" class="brand-logo" />
+    <div class="brand-text">
+      <span class="brand-name">ProofGive</span>
+      <span class="brand-sub">for Kar Se Khar · Solana devnet</span>
+    </div>
   </div>
-  <div class="net-badge">Solana · Devnet</div>
+  <nav class="view-switch">
+    <button id="publicViewBtn" class="view-btn active">Donor view</button>
+    <button id="adminViewBtn" class="view-btn">Admin</button>
+  </nav>
   <button id="connectBtn" class="btn btn-outline">Connect wallet</button>
 </header>
 
 <main>
-  <section class="hero">
-    <h1>Every rupee traceable. Every beneficiary protected.</h1>
-    <p class="hero-sub">A giving ledger built for <strong>Kar Se Khar</strong>. Donations are recorded on-chain so anyone can verify the money moved — without ever exposing who received it.</p>
-  </section>
 
-  <section class="panels">
+  <!-- ============ PUBLIC / DONOR VIEW ============ -->
+  <section id="publicView" class="view">
+
+    <div class="hero">
+      <h1>Every rupee traceable. Every beneficiary protected.</h1>
+      <p class="hero-sub">A giving ledger for Kar Se Khar. Donations are recorded on Solana so anyone can verify the money moved — without ever exposing who received it.</p>
+    </div>
 
     <div class="panel" id="donatePanel">
       <h2>Give</h2>
-      <p class="panel-hint">Sends a small devnet transfer to the NGO wallet, tagged with a memo so it's publicly verifiable.</p>
+      <p class="panel-hint">Sends a small devnet transfer to Kar Se Khar's wallet, tagged with a memo so it's publicly verifiable. Connect your wallet above first.</p>
       <label for="ngoAddress">NGO wallet address</label>
-      <input id="ngoAddress" type="text" placeholder="Paste the receiving Solana address" />
+      <input id="ngoAddress" type="text" placeholder="Paste Kar Se Khar's devnet address" />
 
       <label for="campaign">Campaign / cause</label>
       <input id="campaign" type="text" placeholder="e.g. Winter Ration Drive" />
@@ -43,9 +51,48 @@
       <p id="donateStatus" class="status-line"></p>
     </div>
 
+    <div class="panel">
+      <div class="ledger-head">
+        <h2>Public ledger</h2>
+        <button id="refreshBtn" class="btn btn-outline btn-small">Refresh</button>
+      </div>
+      <p class="panel-hint">Read directly from the chain for the address above. No database, nothing hidden.</p>
+
+      <div class="totals">
+        <div class="total-box">
+          <span class="total-label">Total received</span>
+          <span id="totalReceived" class="total-value">0 SOL</span>
+        </div>
+        <div class="total-box">
+          <span class="total-label">Total distributed</span>
+          <span id="totalDistributedOut" class="total-value">0 SOL</span>
+        </div>
+        <div class="total-box">
+          <span class="total-label">Distribution proofs</span>
+          <span id="proofCount" class="total-value">0</span>
+        </div>
+      </div>
+
+      <table class="ledger-table">
+        <thead>
+          <tr><th>Type</th><th>Detail</th><th>Amount</th><th>Transaction</th></tr>
+        </thead>
+        <tbody id="ledgerBody">
+          <tr><td colspan="4" class="empty-row">Paste Kar Se Khar's address above and click Refresh.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ============ ADMIN VIEW ============ -->
+  <section id="adminView" class="view hidden">
+
+    <div class="admin-banner">Admin only — for Kar Se Khar's team, not donors. Connect the NGO's own wallet above before posting a proof.</div>
+
     <div class="panel" id="distributePanel">
       <h2>Mark distributed</h2>
-      <p class="panel-hint">For the NGO: record that funds were distributed without naming beneficiaries. Only a cryptographic hash of the allocation goes on-chain — the real list stays private and off-chain.</p>
+      <p class="panel-hint">Record that funds were distributed without naming beneficiaries. Only a cryptographic hash of the allocation goes on-chain — the real list stays private and off-chain, never leaving this device.</p>
 
       <label for="batchLabel">Batch label</label>
       <input id="batchLabel" type="text" placeholder="e.g. Winter Ration Drive — Batch 1" />
@@ -56,50 +103,13 @@
       <label for="totalDistributed">Total distributed (SOL)</label>
       <input id="totalDistributed" type="number" step="0.001" min="0" placeholder="0.09" />
 
-      <label for="privateNotes">Private allocation notes (never leaves your browser)</label>
-      <textarea id="privateNotes" rows="3" placeholder="e.g. names, amounts per person — this is hashed locally, never uploaded"></textarea>
+      <label for="privateNotes">Private allocation notes (never leaves this device)</label>
+      <textarea id="privateNotes" rows="3" placeholder="e.g. names, amounts per person — hashed locally, never uploaded"></textarea>
 
       <button id="distributeBtn" class="btn btn-primary">Post distribution proof</button>
       <p id="distributeStatus" class="status-line"></p>
     </div>
 
-  </section>
-
-  <section class="ledger">
-    <div class="ledger-head">
-      <h2>Public ledger</h2>
-      <button id="refreshBtn" class="btn btn-outline btn-small">Refresh</button>
-    </div>
-    <p class="panel-hint">Read directly from the chain. No database, nothing hidden.</p>
-
-    <div class="totals">
-      <div class="total-box">
-        <span class="total-label">Total received</span>
-        <span id="totalReceived" class="total-value">0 SOL</span>
-      </div>
-      <div class="total-box">
-        <span class="total-label">Total distributed</span>
-        <span id="totalDistributedOut" class="total-value">0 SOL</span>
-      </div>
-      <div class="total-box">
-        <span class="total-label">Distribution proofs</span>
-        <span id="proofCount" class="total-value">0</span>
-      </div>
-    </div>
-
-    <table class="ledger-table">
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Detail</th>
-          <th>Amount</th>
-          <th>Transaction</th>
-        </tr>
-      </thead>
-      <tbody id="ledgerBody">
-        <tr><td colspan="4" class="empty-row">Connect a wallet and load an NGO address to see activity.</td></tr>
-      </tbody>
-    </table>
   </section>
 
   <footer class="foot-note">

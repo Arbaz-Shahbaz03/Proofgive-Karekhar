@@ -1,3 +1,5 @@
+const ADMIN_PASSCODE = "karsekhar-admin"; // change this before sharing the repo publicly
+
 const { Connection, PublicKey, Transaction, SystemProgram, clusterApiUrl } = solanaWeb3;
 
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -9,6 +11,34 @@ const connectBtn = document.getElementById("connectBtn");
 const donateBtn = document.getElementById("donateBtn");
 const distributeBtn = document.getElementById("distributeBtn");
 const refreshBtn = document.getElementById("refreshBtn");
+
+// --- view switching ---
+const publicViewBtn = document.getElementById("publicViewBtn");
+const adminViewBtn = document.getElementById("adminViewBtn");
+const publicView = document.getElementById("publicView");
+const adminView = document.getElementById("adminView");
+
+function showPublic() {
+  publicView.classList.remove("hidden");
+  adminView.classList.add("hidden");
+  publicViewBtn.classList.add("active");
+  adminViewBtn.classList.remove("active");
+}
+
+function showAdmin() {
+  const entered = prompt("Admin passcode:");
+  if (entered !== ADMIN_PASSCODE) {
+    if (entered !== null) alert("Wrong passcode.");
+    return;
+  }
+  publicView.classList.add("hidden");
+  adminView.classList.remove("hidden");
+  adminViewBtn.classList.add("active");
+  publicViewBtn.classList.remove("active");
+}
+
+publicViewBtn.addEventListener("click", showPublic);
+adminViewBtn.addEventListener("click", showAdmin);
 
 function setStatus(elId, msg, isError = false) {
   const el = document.getElementById(elId);
