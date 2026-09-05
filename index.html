@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ProofGive — Kar Se Khar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="assets/logo.png" alt="Kar Se Khar" class="brand-logo" />
+    <div class="brand-text">
+      <span class="brand-name">ProofGive</span>
+      <span class="brand-sub">for Kar Se Khar</span>
+    </div>
+  </div>
+  <nav class="view-switch">
+    <button id="publicViewBtn" class="view-btn active">Donor view</button>
+    <button id="adminViewBtn" class="view-btn">Admin</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ============ PUBLIC / DONOR VIEW ============ -->
+  <section id="publicView" class="view">
+
+    <div class="hero">
+      <h1>Every donation accounted for. Every beneficiary protected.</h1>
+      <p class="hero-sub">A giving ledger for Kar Se Khar. Real allocation details never leave our team's device — only aggregate, redacted numbers are ever published or shared here.</p>
+    </div>
+
+    <div class="panel">
+      <div class="ledger-head">
+        <h2>Public ledger</h2>
+      </div>
+      <div class="totals">
+        <div class="total-box">
+          <span class="total-label">Total received</span>
+          <span id="totalReceived" class="total-value">PKR 0</span>
+        </div>
+        <div class="total-box">
+          <span class="total-label">Total distributed</span>
+          <span id="totalDistributedOut" class="total-value">PKR 0</span>
+        </div>
+        <div class="total-box">
+          <span class="total-label">Beneficiaries reached</span>
+          <span id="beneficiaryTotal" class="total-value">0</span>
+        </div>
+      </div>
+
+      <table class="ledger-table">
+        <thead>
+          <tr><th>Type</th><th>Detail</th><th>Amount</th></tr>
+        </thead>
+        <tbody id="ledgerBody">
+          <tr><td colspan="3" class="empty-row">Nothing logged yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Transparency report</h2>
+      <p class="panel-hint">Written by Gemini from the public ledger above. No names, no per-person amounts.</p>
+      <div id="reportOutput" class="report-output">No report generated yet.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Ask about this campaign</h2>
+      <p class="panel-hint">Answered only from the public ledger — if something isn't published, you'll be told so.</p>
+      <label for="qaInput">Your question</label>
+      <input id="qaInput" type="text" placeholder="e.g. How much has been distributed so far?" />
+      <button id="qaBtn" class="btn btn-primary">Ask</button>
+      <p id="qaStatus" class="status-line"></p>
+      <div id="qaOutput" class="report-output"></div>
+    </div>
+
+  </section>
+
+  <!-- ============ ADMIN VIEW ============ -->
+  <section id="adminView" class="view hidden">
+
+    <div class="admin-banner">Admin only — visible to Kar Se Khar staff, not donors.</div>
+
+    <div class="panel">
+      <h2>Connect Gemini</h2>
+      <p class="panel-hint">Stored only in this browser's local storage — never written into the code, never pushed to GitHub.</p>
+      <label for="apiKey">Gemini API key</label>
+      <input id="apiKey" type="password" placeholder="Paste your key" />
+      <label class="checkbox-line">
+        <input id="rememberKey" type="checkbox" checked />
+        Remember on this device
+      </label>
+      <div class="btn-row">
+        <button id="saveKeyBtn" class="btn btn-primary">Save key</button>
+        <button id="clearKeyBtn" class="btn btn-outline">Clear key</button>
+      </div>
+      <p id="keyStatusMsg" class="status-line"></p>
+    </div>
+
+    <div class="panels">
+      <div class="panel">
+        <h2>Log a donation</h2>
+        <label for="donorName">Donor name (optional)</label>
+        <input id="donorName" type="text" placeholder="Leave blank for 'Anonymous'" />
+        <label for="campaign">Campaign / cause</label>
+        <input id="campaign" type="text" placeholder="e.g. Winter Ration Drive" />
+        <label for="amount">Amount (PKR)</label>
+        <input id="amount" type="number" step="1" min="1" placeholder="2000" />
+        <button id="donateBtn" class="btn btn-primary">Add donation</button>
+        <p id="donateStatus" class="status-line"></p>
+      </div>
+
+      <div class="panel">
+        <h2>Record distribution</h2>
+        <p class="panel-hint">Only the batch summary below is published. Names and per-person amounts go in the private notes box, which is never stored or sent anywhere.</p>
+        <label for="batchLabel">Batch label</label>
+        <input id="batchLabel" type="text" placeholder="e.g. Winter Ration Drive — Batch 1" />
+        <label for="beneficiaryCount"># of beneficiaries</label>
+        <input id="beneficiaryCount" type="number" min="1" placeholder="12" />
+        <label for="totalDistributed">Total distributed (PKR)</label>
+        <input id="totalDistributed" type="number" step="1" min="0" placeholder="18000" />
+        <label for="privateNotes">Private allocation notes (this device only)</label>
+        <textarea id="privateNotes" rows="3" placeholder="e.g. names and amounts per person"></textarea>
+        <button id="distributeBtn" class="btn btn-primary">Add distribution record</button>
+        <p id="distributeStatus" class="status-line"></p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Generate public report</h2>
+      <p class="panel-hint">This becomes what donors see on the Donor view.</p>
+      <button id="generateReportBtn" class="btn btn-primary">Generate report</button>
+      <p id="reportStatus" class="status-line"></p>
+    </div>
+
+  </section>
+
+  <footer class="foot-note">
+    Built for the DEV Weekend Challenge: Generosity Edition · Powered by Google Gemini · Beneficiary data never leaves this device.
+  </footer>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
