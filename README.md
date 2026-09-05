@@ -18,19 +18,19 @@ ProofGive keeps two things public and one thing private:
 ### Donor view
 Connect a wallet, send a donation, and watch the public ledger update straight from the chain.
 
-![Donor View](assets/donor-view.png)
+![Donor View](asset/donor-view.png.png)
 
 ### Admin view
 Click "Admin" in the header and enter the passcode (`karsekhar-admin` — change this in `app.js` before sharing the repo). This is where Kar Se Khar's team posts a distribution proof using the NGO's own connected wallet.
 
-![Admin View](assets/admin-view.png)
+![Admin View](asset/admin-view.png.png)
 
 The passcode is a demo-level separation, not real security — visible to anyone reading the source. Good enough to show the intended roles for the challenge; a production version would need real authentication.
 
 ### Public ledger
 Read real-time totals and transaction proofs verified straight from Solana devnet.
 
-![Public Ledger](assets/public-ledger.png)
+![Public Ledger](asset/public-ledger.png.png)
 
 ## Running it locally
 
